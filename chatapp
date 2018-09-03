@@ -1,0 +1,43 @@
+Server.py:
+
+import socket
+try:
+    serv=socket.socket()
+    serv.bind(("localhost",5000))
+    serv.listen(5)
+    print("Waiting for the other party to join: ")
+    clientaddr,Id = serv.accept()
+    print("\nConnected to client %s\n" % clientaddr)
+
+    while True:
+        cmsg=clientaddr.recv(1024)
+        print(cmsg.decode('ascii'))
+        var=input("Server> ")
+        clientaddr.send(var.encode('ascii'))
+    clientaddr.close()
+        
+except:
+    print("Connection terminated")
+finally:
+    serv.close()
+    
+  
+  
+Client.py :  
+import socket
+try:
+    serv=socket.socket()
+    serv.connect(("localhost",5000))
+    while True:
+        data=input("Client> ")
+        serv.send(data.encode("ascii"))
+        smsg=serv.recv(1024)
+        print(smsg.decode('ascii'))
+       
+except:
+    print("Connection terminated")
+finally:
+    serv.close()
+
+    
+    
