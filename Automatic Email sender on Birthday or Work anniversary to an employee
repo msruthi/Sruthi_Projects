@@ -6,7 +6,7 @@ import time
 import schedule
 import json
 
-# Employee Data is read from Database.Currently,a local db is configured fro testing purposes
+
 conn = pymysql.connect(host='localhost',user='xxxx',password='xxxx',db='xxxx',charset='utf8mb4',cursorclass=pymysql.cursors.DictCursor)
 admin = conn.cursor()
 sql = 'select * from configuration'
@@ -15,14 +15,16 @@ adminrows = admin.fetchall()
 data = adminrows[0]
 
 sub_dict = json.loads(data['Mail Subject'])
-print(type(sub_dict))sub_WA = sub_dict['WA']
+sub_WA = sub_dict['WA']
 sub_HBD = sub_dict['Birthday']
 
-scheduletime = str(data['Scheduler Time'])
-scheduletime_new=  ':'.join(str(scheduletime).split(':')[:2])
-today = time.strftime('%m/%d')
+scheduletime = data['Scheduler Time']                                        # a time delta object
+new_schd_time = (datetime.datetime.min + scheduletime).time()                # converting to a datetime object
+final_schd_time = new_schd_time.strftime('%H:%M')                            # converting to string object to use it in scheduler
+current_day = time.strftime('%m/%d')
 
-# function to send email
+
+# Function defined to send email
 def sendemail(from_email, to_email, cc_email, subject, message, login, password, smtpserver):
     header = 'from: %s\n' % from_email
     header += 'to: %s\n' % to_email
@@ -37,41 +39,44 @@ def sendemail(from_email, to_email, cc_email, subject, message, login, password,
     server.sendmail(from_email,to_emails,message)
     server.quit()
 
-# function to check birthdays
+# Logic to check if there are any birthdays or work anniversaries on current day
 def checktodaysbirthdays():
     b_to_email = []
     j_to_email = []
     b_cc_email = []
     j_cc_email = []
     total_list = []
-    
 
     if data['Enabled'] == 1:
         a = conn.cursor()
         sql = 'select * from employee'
         a.execute(sql)
         rows = a.fetchall()
+        print(rows)
         # to check if there are any birthdays or work anniversaries matching current day and create respective lists
         for row in rows:
             total_list.append(row['EMail'])
             DOB = (row['DOB']).strftime('%m/%d')
             JDate = (row['Joining Date']).strftime('%m/%d')
 
-            if today == DOB:
+            if current_day == DOB:
                 b_to_email.append(row['EMail'])
 
-            if today == JDate:
-                years = int(time.strftime('%Y')) - int((row['Joining Date']).strftime('%Y'))   #calc.no.of years
+            if current_day == JDate:
+                cur_year = datetime.date.today().year
+                join_year = row['Joining Date'].year
+                years=cur_year - join_year
                 j_to_email.append(row['EMail'])
 
-        # # if atleast 1 employee or more than 1 is found, loop through each employee and
-        # #  send independent mails to each of them with all others in Cc i.e,Cc= Total List of employees - Current Employee
+        # if atleast 1 employee or more than 1 is found, loop through each employee and
+        # send independent mails to each of them with all others in Cc i.e,Cc= Total List of employees - Current Employee
 
         if len(b_to_email) > 0:
             print("Processing  Birthdays...")
             for i in range(len(b_to_email)):
                 b_cc_email = [item for item in total_list if item not in b_to_email[i]]  #finding Cc List
                 subjct = "%s %s" %(sub_HBD, b_to_email[i])
+                print('CALLED %d time' % i)
                 sendemail(data['Admin EMail'], b_to_email[i], b_cc_email, subjct, "", data['Admin EMail'],
                  data['Password'], smtpserver='smtp.gmail.com:587')
 
@@ -80,25 +85,23 @@ def checktodaysbirthdays():
             for i in range(len(j_to_email)):
                 j_cc_email = [item for item in total_list if item not in j_to_email[i]]   # finding Cc List
                 subjct = "Congratulations on completion of %d years %s" %(years,j_to_email[i])
+                print('CALLED %d time' %i)
                 sendemail(data['Admin EMail'], j_to_email[i], j_cc_email, subjct, "", data['Admin EMail'],
                  data['Password'], smtpserver='smtp.gmail.com:587')
 
         if len(b_to_email) <= 0 and len(j_to_email) <= 0:
-            print("No Birthdays or W.A")
+            print("No Birthdays or Work Anniversaries today")
             sendemail(data['Admin EMail'], data['Admin EMail'],[], "No Birthdays or Work Anniversaries today", "", data['Admin EMail'],
                       data['Password'], smtpserver='smtp.gmail.com:587')
     else:
         print("Scheduler is not Enabled")
 
-# Below code can be used to schedule a job which runs every day at given time
-     # and checks if there are any birthdays/work anniversaries for that day
-     
-# schedule.every().day.at(scheduletime_new).do(checktodaysbirthdays)
-# schedule.every(30).minutes.do(checktodaysbirthdays)
-# while True:
-#     schedule.run_pending()
-#     time.sleep(2)
+# logic that can be used to have a scheduler run on everyday at configured time by admin (final_schd_time)
+ schedule.every().day.at(final_schd_time).do(checktodaysbirthdays)
+ while True:
+    schedule.run_pending()
+    time.sleep(2)
 
 
-if __name__ == '__main__':
-    checktodaysbirthdays()
+# if __name__ == '__main__':
+#   checktodaysbirthdays()
